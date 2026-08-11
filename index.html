@@ -2617,7 +2617,7 @@ function renderProjects(){
     <div><h2>Your Books</h2><div class="sub">Every project or site you're tracking, at a glance</div></div>
     <div style="display:flex;gap:8px;">
       <button class="btn secondary" data-action="join-book-open">🔗 Join a shared book</button>
-      <button class="btn secondary" data-action="export-pdf" data-scope="all">⬇︎ Export PDF (all)</button>
+      <button class="btn secondary" data-action="open-export" data-scope="all">⬇︎ Export report (all)</button>
     </div>
   </div>
   ${list.length ? `<div class="book-list">
@@ -2643,7 +2643,7 @@ function renderProjects(){
           ${ui.openMenu===p.id ? `
           <div class="book-menu" data-stop="1">
             <button data-action="edit-project" data-id="${p.id}">Edit</button>
-            <button data-action="export-pdf" data-scope="project" data-id="${p.id}">Export PDF</button>
+            <button data-action="open-export" data-scope="project" data-id="${p.id}">Export report</button>
             ${cloud ? `<button data-action="show-share" data-id="${p.id}">Invite others</button>` : `<button data-action="share-project" data-id="${p.id}">Share this book</button>`}
             <button data-action="toggle-archive-project" data-id="${p.id}">${p.archived?'Unarchive':'Archive'}</button>
           </div>` : ''}
@@ -2678,7 +2678,7 @@ function renderBookDetail(p){
     </div>
     <div style="display:flex;gap:8px;">
       ${cloud ? `<button class="btn secondary" data-action="show-share" data-id="${p.id}">Invite others</button>` : ''}
-      <button class="btn secondary" data-action="export-pdf" data-scope="project" data-id="${p.id}">⬇︎ Export PDF</button>
+      <button class="btn secondary" data-action="open-export" data-scope="project" data-id="${p.id}">⬇︎ Export</button>
       <button class="btn" data-action="add-txn-to-book" data-id="${p.id}">+ Add entry</button>
     </div>
   </div>
@@ -2741,7 +2741,7 @@ function renderSettings(){
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn secondary small" data-action="export-json">⬇︎ Export backup (JSON)</button>
       <button class="btn secondary small" data-action="export-csv">⬇︎ Export transactions (CSV)</button>
-      <button class="btn secondary small" data-action="export-pdf" data-scope="all">⬇︎ Export PDF report</button>
+      <button class="btn secondary small" data-action="open-export" data-scope="all">⬇︎ Export report (PDF or CSV)</button>
       <label class="btn secondary small" style="cursor:pointer;">
         ⬆︎ Import backup
         <input type="file" id="import-file" accept="application/json" style="display:none;">
@@ -2849,15 +2849,22 @@ function renderExportModal(){
     {key:'year', label:'This year'},
     {key:'custom', label:'Custom range'}
   ];
+  const isCsv = p.format === 'csv';
   return `
   <div class="modal-backdrop">
     <div class="modal" data-stop="1">
-      <h3>Export PDF report</h3>
+      <h3>Export report</h3>
       <div class="form-grid">
         <div class="field" style="gap:2px;">
           <span style="font-size:12px;color:var(--text-muted);">Scope</span>
           <div style="font-weight:600;font-size:13.5px;color:var(--text-primary);">${esc(scopeLabel)}</div>
         </div>
+        <label class="field">Format
+          <select id="f-export-format">
+            <option value="pdf" ${!isCsv?'selected':''}>PDF — printable report</option>
+            <option value="csv" ${isCsv?'selected':''}>CSV — spreadsheet data</option>
+          </select>
+        </label>
         <label class="field">Date range
           <select id="f-export-range">
             ${presets.map(pr=>`<option value="${pr.key}" ${p.rangeKey===pr.key?'selected':''}>${pr.label}</option>`).join('')}
@@ -2868,14 +2875,15 @@ function renderExportModal(){
           <label class="field">From <input type="date" id="f-export-from" value="${p.from||''}"></label>
           <label class="field">To <input type="date" id="f-export-to" value="${p.to||''}"></label>
         </div>` : ''}
+        ${isCsv ? '' : `
         <label class="field" style="flex-direction:row;align-items:center;gap:8px;">
           <input type="checkbox" id="f-export-catbreakdown" ${p.includeCategoryBreakdown?'checked':''} style="width:auto;">
           <span>Include category breakdown</span>
-        </label>
+        </label>`}
       </div>
       <div class="modal-actions">
         <button class="btn secondary" data-action="close-modal">Cancel</button>
-        <button class="btn" data-action="generate-export-pdf">Generate PDF</button>
+        <button class="btn" data-action="generate-export">${isCsv ? 'Download CSV' : 'Generate PDF'}</button>
       </div>
     </div>
   </div>`;
@@ -3206,13 +3214,13 @@ document.addEventListener('click', (e) => {
       });
     return;
   }
-  if (action === 'export-pdf') {
+  if (action === 'open-export') {
     const scope = el.dataset.scope === 'project' ? { type:'project', id: el.dataset.id } : { type:'all' };
     ui.openMenu = null;
-    ui.modal = { type:'export', payload: { scope, rangeKey:'all', from:'', to:'', includeCategoryBreakdown:false } };
+    ui.modal = { type:'export', payload: { scope, format:'pdf', rangeKey:'all', from:'', to:'', includeCategoryBreakdown:false } };
     render(); return;
   }
-  if (action === 'generate-export-pdf') {
+  if (action === 'generate-export') {
     const p = ui.modal.payload;
     let range = null;
     if (p.rangeKey === 'custom') {
@@ -3225,10 +3233,12 @@ document.addEventListener('click', (e) => {
       range = presetRangeDates(p.rangeKey);
     }
     const scope = p.scope;
+    const format = p.format === 'csv' ? 'csv' : 'pdf';
     const includeCategoryBreakdown = !!p.includeCategoryBreakdown;
     ui.modal = null;
     render();
-    exportPDF(scope, range, includeCategoryBreakdown);
+    if (format === 'csv') exportReportCSV(scope, range);
+    else exportPDF(scope, range, includeCategoryBreakdown);
     return;
   }
   if (action === 'save-txn') { saveTxnFromModal(el.dataset.id || null); return; }
@@ -3282,6 +3292,10 @@ document.addEventListener('change', (e) => {
   if (e.target.id === 'import-file') {
     const file = e.target.files[0];
     if (file) importJSON(file);
+  }
+  if (e.target.id === 'f-export-format') {
+    ui.modal.payload.format = e.target.value;
+    render();
   }
   if (e.target.id === 'f-export-range') {
     ui.modal.payload.rangeKey = e.target.value;
@@ -3414,16 +3428,49 @@ function exportJSON(){
   const blob = new Blob([JSON.stringify(state, null, 2)], { type:'application/json' });
   downloadBlob(blob, `cashbook-backup-${todayStr()}.json`);
 }
+function toCSV(rows){
+  return rows.map(r => r.map(v => {
+    const s = v == null ? '' : String(v);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+  }).join(',')).join('\r\n');
+}
 function exportCSV(){
   const rows = [['Date','Type','Account','To Account','Category','Project','Note','Amount']];
   [...state.transactions].sort((a,b)=>a.date.localeCompare(b.date)).forEach(t => {
     const acc = accountById(t.accountId);
     const to = t.toAccountId ? accountById(t.toAccountId) : null;
-    rows.push([t.date, t.type, acc?acc.name:'', to?to.name:'', t.category||'', projectNameOf(t)==='—' ? '' : projectNameOf(t), (t.note||'').replace(/"/g,'""'), t.amount]);
+    rows.push([t.date, t.type, acc?acc.name:'', to?to.name:'', t.category||'', projectNameOf(t)==='—' ? '' : projectNameOf(t), t.note||'', t.amount]);
   });
-  const csv = rows.map(r => r.map(v => /[",\n]/.test(String(v)) ? `"${v}"` : v).join(',')).join('\n');
-  const blob = new Blob([csv], { type:'text/csv' });
+  const blob = new Blob([toCSV(rows)], { type:'text/csv;charset=utf-8' });
   downloadBlob(blob, `cashbook-transactions-${todayStr()}.csv`);
+}
+/* Same data as the PDF report (scope + date range), as spreadsheet rows. */
+function exportReportCSV(scope, range){
+  const txns = scopedTxns(scope, range);
+  const showProject = scope.type !== 'project';
+  const header = ['Date','Type','Account','To Account','Category'];
+  if (showProject) header.push('Book');
+  header.push('Note','Cash In','Cash Out','Balance');
+  const rows = [header];
+  let running = 0, income = 0, expense = 0;
+  txns.forEach(t => {
+    const acc = accountById(t.accountId);
+    const to = t.toAccountId ? accountById(t.toAccountId) : null;
+    let cashIn = '', cashOut = '';
+    if (t.type === 'income') { running += t.amount; income += t.amount; cashIn = t.amount; }
+    else if (t.type === 'expense') { running -= t.amount; expense += t.amount; cashOut = t.amount; }
+    const row = [t.date, t.type, acc ? acc.name : (t.accountName || ''), to ? to.name : (t.toAccountName || ''), t.category || ''];
+    if (showProject) row.push(projectNameOf(t)==='—' ? '' : projectNameOf(t));
+    row.push(t.note||'', cashIn, cashOut, running);
+    rows.push(row);
+  });
+  const totals = ['Totals','','','',''];
+  if (showProject) totals.push('');
+  totals.push('', income, expense, income - expense);
+  rows.push(totals);
+  const label = exportScopeLabel(scope).replace(/[^a-z0-9]+/gi,'-');
+  const blob = new Blob([toCSV(rows)], { type:'text/csv;charset=utf-8' });
+  downloadBlob(blob, `CashBook-${label}-${todayStr()}.csv`);
 }
 function reportIconSVG(){
   // A small flat "ledger" mark in green, echoing the desktop app icon.
@@ -3460,12 +3507,17 @@ function presetRangeDates(key){
   }
   return null;
 }
-function buildReportHTML(scope, range, includeCategoryBreakdown){
-  let txns;
-  let scopeLabel = 'All projects';
+function exportScopeLabel(scope){
   if (scope.type === 'project') {
     const p = projectById(scope.id);
-    scopeLabel = p ? p.name : 'Project';
+    return p ? p.name : 'Project';
+  }
+  return 'All projects';
+}
+function scopedTxns(scope, range){
+  let txns;
+  if (scope.type === 'project') {
+    const p = projectById(scope.id);
     txns = p ? [...projectTxns(p)] : [];
   } else {
     txns = [...state.transactions];
@@ -3474,6 +3526,11 @@ function buildReportHTML(scope, range, includeCategoryBreakdown){
     txns = txns.filter(t => t.date >= range.from && t.date <= range.to);
   }
   txns.sort((a,b)=> a.date.localeCompare(b.date) || (a.createdAt||0)-(b.createdAt||0) || String(a.id).localeCompare(String(b.id)));
+  return txns;
+}
+function buildReportHTML(scope, range, includeCategoryBreakdown){
+  const scopeLabel = exportScopeLabel(scope);
+  const txns = scopedTxns(scope, range);
 
   const income = txns.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
   const expense = txns.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
@@ -3566,8 +3623,7 @@ function buildReportHTML(scope, range, includeCategoryBreakdown){
 function exportPDF(scope, range, includeCategoryBreakdown){
   const target = document.getElementById('print-report');
   target.innerHTML = buildReportHTML(scope, range, includeCategoryBreakdown);
-  const proj = scope.type === 'project' ? projectById(scope.id) : null;
-  const label = scope.type === 'project' ? (proj ? proj.name : 'Project') : 'All-Projects';
+  const label = exportScopeLabel(scope);
   const prevTitle = document.title;
   document.title = `CashBook-${label.replace(/[^a-z0-9]+/gi,'-')}-${todayStr()}`;
   const restoreTitle = () => { document.title = prevTitle; window.removeEventListener('afterprint', restoreTitle); };
