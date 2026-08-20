@@ -2783,8 +2783,15 @@ function renderModal(){
   if (ui.modal.type === 'join') return renderJoinModal();
   return '';
 }
+// Share links must point somewhere the recipient can actually reach. When the
+// app is opened locally (file:// or a dev server) location.origin is private to
+// this machine, so fall back to the published address instead.
+const PUBLIC_APP_URL = 'https://mohammadgarbaa.github.io/CashBooks/';
 function shareLinkFor(code){
-  return location.origin + location.pathname + '?join=' + code;
+  const local = location.protocol === 'file:' ||
+    /^(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)$/.test(location.hostname);
+  const base = local ? PUBLIC_APP_URL : location.origin + location.pathname;
+  return base + '?join=' + code;
 }
 function renderShareModal(){
   const p = ui.modal.payload || {};
